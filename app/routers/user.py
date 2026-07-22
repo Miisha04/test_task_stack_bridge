@@ -1,4 +1,9 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, status, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.schemas.user import UserCreate, UserResponse
+from app.database import get_db
+from app.services import user as user_service
 
 router = APIRouter()
 
@@ -8,3 +13,14 @@ async def check_health():
         "status": "ok"
     }
 
+
+@router.post(
+    "/register",
+    status_code=status.HTTP_201_CREATED
+)
+async def register_user(
+    user_create: UserCreate,
+    db: AsyncSession = Depends(get_db)
+) -> UserResponse:
+
+    return await user_service.register_user(db, user_create)
