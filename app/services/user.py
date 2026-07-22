@@ -1,8 +1,8 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.user import User
-from app.schemas.user import UserResponse, UserCreate
-from app.security import hash_password
+from app.schemas.user import UserResponse, UserCreate, UserLogin, LoginResponse
+from app.security import hash_password, create_access_token, verify_password
 from app.repositories import user as user_repos
 
 
@@ -13,7 +13,7 @@ async def register_user(
 
     new_user = User(
         **user_create.model_dump(exclude={"password"}),
-        hashed_password=user_create.password
+        hashed_password=hash_password(user_create.password)
     )
 
     db.add(new_user)
@@ -29,7 +29,20 @@ async def register_user(
 
     return UserResponse.model_validate(user)
 
-    
 
-
+async def login(
+    db: AsyncSession,
+    user_login: UserLogin
+) -> LoginResponse:
     
+    user = await user_repos.get_user(db, user_login.email)
+    if not user:
+        raise Exception("There is no such user")
+
+    is_verified = verify_password(user_login.password, user.hashed_password)
+    if not is_verified:
+        raise Exception("Not auntificated")
+
+    return LoginResponse(
+        access_token=create_access_token(user_login.model_dump())
+    )

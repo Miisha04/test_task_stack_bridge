@@ -15,3 +15,14 @@ class UserCreate(UserBase):
 
 class UserResponse(UserBase):
     id: int
+
+
+class UserLogin(BaseModel):
+    email: str
+    password: str
+
+
+class LoginResponse(BaseModel):
+    access_token: str
+    # refresh_token: str
+    token_type: str = "bearer"
