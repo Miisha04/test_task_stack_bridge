@@ -1,0 +1,40 @@
+
+services:
+
+  db:
+    image: postgres:15-alpine
+    container_name: stack_bridge_db
+    restart: always
+
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: stack_bridge
+
+    ports:
+     - "5432:5432"
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    
+  
+  api:
+    build: .
+    container_name: stack_bridge_api
+    restart: always
+
+    depends_on:
+      - db
+
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: stack_bridge
+
+    ports:
+      - "8000:8000"
+    
+volumes:
+  postgres_data:
