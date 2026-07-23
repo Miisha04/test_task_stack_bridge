@@ -32,6 +32,14 @@ services:
       DB_USER: postgres
       DB_PASSWORD: postgres
       DB_NAME: stack_bridge
+      JWT_SECRET_KEY: hihihahahihihahahihihahahihihaha
+      JWT_ALGORITHM: HS256
+      JWT_ISSUER: stack_bridge_backend
+      JWT_AUDIENCE_USER: stack-bridge-users
+      JWT_ACCESS_TOKEN_EXPIRE_MINUTES: 15
+      JWT_REFRESH_SECRET_KEY: ahahahahahahahahahahahahahahahah
+      JWT_REFRESH_TOKEN_EXPIRE_DAYS: 30
+      JWT_AUDIENCE_REFRESH: stack-bridge-users-refresh
 
     ports:
       - "8000:8000"
