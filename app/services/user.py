@@ -1,4 +1,5 @@
 import uuid
+from jose import JWTError, jwt
 from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,7 +17,8 @@ async def register_user(
 
     new_user = User(
         **user_create.model_dump(exclude={"password"}),
-        hashed_password=hash_password(user_create.password)
+        hashed_password=hash_password(user_create.password),
+        is_active=True
     )
 
     db.add(new_user)
@@ -105,3 +107,60 @@ async def login(
         access_token=create_access_token(access_payload),
         refresh_token=refresh_token
     )
+
+
+async def logout(
+    db: AsyncSession,
+    refresh_token: str
+) -> None:
+
+    settings = get_settings()
+    now = datetime.now()
+
+    try:
+        payload = jwt.decode(
+            refresh_token,
+            settings.jwt_refresh_secret,
+            algorithms=[settings.jwt_algorithm],
+            issuer=settings.jwt_issuer,
+            audience=settings.jwt_audience_refresh,
+        )
+    except JWTError:
+        raise Exception("Invalid refresh token")
+
+    if payload.get("token_type") != "refresh":
+        raise Exception("Invalid refresh token")
+
+    username = payload.get("sub")
+    jti_raw = payload.get("jti")
+    if not username or not jti_raw:
+        raise Exception("Invalid refresh token")
+
+    try:
+        token_jti = uuid.UUID(str(jti_raw))
+    except (ValueError, TypeError):
+        raise Exception("Invalid refresh token")
+
+    refresh_obj = await user_repos.get_refresh_by_hash(db, hash_refresh(refresh_token))
+    if not refresh_obj:
+        raise Exception("Invalid refresh token")
+
+    if refresh_obj.jti != token_jti:
+        raise Exception("Invalid refresh token")
+
+    if refresh_obj.revoked_at is not None:
+        raise Exception("Invalid refresh token")
+
+    if refresh_obj.expires_at <= now:
+        raise Exception("Invalid refresh token")
+
+    user = await user_repos.get_user(db, username)
+    if not user or user.id != refresh_obj.user_id:
+        raise Exception("Invalid refresh token")
+
+    refresh_obj.revoked_at = now
+    try:
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise Exception("Logout failed")

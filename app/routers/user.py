@@ -41,3 +41,14 @@ async def login(
         request.headers.get("user-agent"),
         ip=request.client.host if request.client else None
     )
+
+
+@router.post(
+    "/logout",
+    status_code=status.HTTP_204_NO_CONTENT
+)
+async def logout(
+    refresh_token: str,
+    db: AsyncSession = Depends(get_db)
+) -> None:
+    return await user_service.logout(db, refresh_token)
