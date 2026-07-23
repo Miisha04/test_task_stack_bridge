@@ -1,4 +1,4 @@
-from fastapi import APIRouter, status, Depends
+from fastapi import APIRouter, status, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.user import UserCreate, UserResponse, UserLogin, LoginResponse
@@ -32,6 +32,12 @@ async def register_user(
 )
 async def login(
     user_login: UserLogin,
-    db: AsyncSession = Depends(get_db)
+    request: Request,
+    db: AsyncSession = Depends(get_db),
 ) -> LoginResponse:
-    return await user_service.login(db, user_login)
+    return await user_service.login(
+        db, 
+        user_login, 
+        request.headers.get("user-agent"),
+        ip=request.client.host if request.client else None
+    )

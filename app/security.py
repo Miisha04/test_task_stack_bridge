@@ -1,8 +1,8 @@
-
+import hashlib
 from jose import jwt
 from passlib.context import CryptContext
 
-from app.settings import get_setting
+from app.settings import get_settings
 
 pwd_context = CryptContext(schemes=["argon2", "bcrypt"], deprecated="auto")
 
@@ -15,5 +15,13 @@ def verify_password(password: str, hashed_password: str) -> bool:
 
 def create_access_token(data: dict) -> str:
     to_encode = data.copy()
-    settings = get_setting()
+    settings = get_settings()
     return jwt.encode(to_encode, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+
+def create_refresh_token(data: dict) -> str:
+    to_encode = data.copy()
+    settings = get_settings()
+    return jwt.encode(to_encode, settings.jwt_refresh_secret, algorithm=settings.jwt_algorithm)
+
+def hash_refresh(refresh_token: str) -> str:
+    return hashlib.sha256(refresh_token.encode("utf-8")).hexdigest()
