@@ -1,10 +1,11 @@
 import uuid
 from jose import JWTError, jwt
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.user import User, RefreshToken
-from app.schemas.user import UserResponse, UserCreate, UserLogin, LoginResponse
+from app.schemas.user import UserResponse, UserCreate, UserLogin, LoginResponse, UserUpdate
 from app.security import hash_password, create_access_token, verify_password, create_refresh_token, hash_refresh
 from app.repositories import user as user_repos
 from app.settings import get_settings
@@ -18,21 +19,23 @@ async def register_user(
     new_user = User(
         **user_create.model_dump(exclude={"password"}),
         hashed_password=hash_password(user_create.password),
-        is_active=True
+        is_active=True,
+        role="user",
     )
 
     db.add(new_user)
 
     try:
         await db.commit()
-    except Exception:
+        await db.refresh(new_user)
+    except Exception as exc:
         await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Error during user registration",
+        ) from exc
 
-    user = await user_repos.get_user(db, user_create.email)
-    if not user:
-        raise Exception("Error during user registration")
-
-    return UserResponse.model_validate(user)
+    return UserResponse.model_validate(new_user)
 
 
 def _build_access_payload(email: str, now: datetime) -> dict:
@@ -73,13 +76,25 @@ async def login(
     
     user = await user_repos.get_user(db, user_login.email)
     if not user:
-        raise Exception("There is no such user")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid credentials",
+        )
+
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid credentials",
+        )
 
     is_verified = verify_password(user_login.password, user.hashed_password)
     if not is_verified:
-        raise Exception("Not auntificated")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid credentials",
+        )
 
-    now = datetime.now()    
+    now = datetime.now(timezone.utc)
     access_payload = _build_access_payload(user_login.email, now)
 
     refresh_jti = uuid.uuid4()
@@ -100,8 +115,12 @@ async def login(
     db.add(refresh_obj)
     try:
         await db.commit()
-    except Exception:
+    except Exception as exc:
         await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Login failed",
+        ) from exc
                                            
     return LoginResponse(
         access_token=create_access_token(access_payload),
@@ -115,7 +134,7 @@ async def logout(
 ) -> None:
 
     settings = get_settings()
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
 
     try:
         payload = jwt.decode(
@@ -125,42 +144,127 @@ async def logout(
             issuer=settings.jwt_issuer,
             audience=settings.jwt_audience_refresh,
         )
-    except JWTError:
-        raise Exception("Invalid refresh token")
+    except JWTError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token",
+        ) from exc
 
     if payload.get("token_type") != "refresh":
-        raise Exception("Invalid refresh token")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token",
+        )
 
     username = payload.get("sub")
     jti_raw = payload.get("jti")
     if not username or not jti_raw:
-        raise Exception("Invalid refresh token")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token",
+        )
 
     try:
         token_jti = uuid.UUID(str(jti_raw))
     except (ValueError, TypeError):
-        raise Exception("Invalid refresh token")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token",
+        )
 
     refresh_obj = await user_repos.get_refresh_by_hash(db, hash_refresh(refresh_token))
     if not refresh_obj:
-        raise Exception("Invalid refresh token")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token",
+        )
 
     if refresh_obj.jti != token_jti:
-        raise Exception("Invalid refresh token")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token",
+        )
 
     if refresh_obj.revoked_at is not None:
-        raise Exception("Invalid refresh token")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token",
+        )
 
     if refresh_obj.expires_at <= now:
-        raise Exception("Invalid refresh token")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token",
+        )
 
     user = await user_repos.get_user(db, username)
     if not user or user.id != refresh_obj.user_id:
-        raise Exception("Invalid refresh token")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token",
+        )
 
     refresh_obj.revoked_at = now
     try:
         await db.commit()
-    except Exception:
+    except Exception as exc:
         await db.rollback()
-        raise Exception("Logout failed")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Logout failed",
+        ) from exc
+
+
+async def update_user_profile(
+    db: AsyncSession,
+    user_id: int,
+    user_update: UserUpdate,
+) -> UserResponse:
+    user = await db.get(User, user_id)
+    if not user or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    update_data = user_update.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(user, field, value)
+
+    try:
+        await db.commit()
+        await db.refresh(user)
+    except Exception as exc:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Error during user update",
+        ) from exc
+
+    return UserResponse.model_validate(user)
+
+
+async def delete_user(
+    db: AsyncSession,
+    user_id: int
+) -> None:
+    user = await db.get(User, user_id)
+    if not user or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    user.is_active = False
+    now = datetime.now(timezone.utc)
+
+    await user_repos.revoke_refresh(db, user_id, now)
+
+    try:
+        await db.commit()
+    except Exception as exc:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error during user deletion",
+        ) from exc

@@ -23,7 +23,11 @@ def upgrade() -> None:
 
     op.add_column(
         "users", 
-        sa.Column("is_active", sa.Boolean, server_default=sa.text('true'), nullable=False)
+        sa.Column("is_active", sa.Boolean, server_default=sa.text("true"), nullable=False)
+    )
+    op.add_column(
+        "users", 
+        sa.Column("role", sa.String, server_default=sa.text("'user'"), nullable=False)
     )
 
 
@@ -31,3 +35,4 @@ def downgrade() -> None:
     """Downgrade schema."""
 
     op.drop_column("users", "is_active")
+    op.drop_column("users", "role")

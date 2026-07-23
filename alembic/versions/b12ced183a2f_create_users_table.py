@@ -46,7 +46,8 @@ def upgrade() -> None:
         sa.Column(
             "email",
             sa.String(length=512),
-            nullable=False
+            nullable=False,
+            unique=True,
         ),
 
 
@@ -62,4 +63,4 @@ def upgrade() -> None:
 def downgrade() -> None:
     """Downgrade schema."""
     
-    op.drop_table("news")
+    op.drop_table("users")

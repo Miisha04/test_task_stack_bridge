@@ -19,8 +19,21 @@ class User(Base):
 
     email: Mapped[str] = mapped_column(String, nullable=False, unique=True)
     hashed_password: Mapped[str] = mapped_column(String, nullable=False)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        server_default="true",
+        nullable=False,
+    )
+    role: Mapped[str] = mapped_column(
+        String,
+        ForeignKey("roles.code"),
+        default="user",
+        server_default="user",
+        nullable=False,
+    )
 
+    role_model = relationship("RoleModel", back_populates="users")
     refresh_tokens = relationship("RefreshToken", back_populates="user", cascade="all, delete-orphan")
 
 

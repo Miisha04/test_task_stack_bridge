@@ -4,7 +4,7 @@ class UserBase(BaseModel):
 
     first_name: str
     last_name: str
-    middle_name: str | None
+    middle_name: str | None = None
     email: EmailStr
 
     model_config = ConfigDict(from_attributes=True)
@@ -15,6 +15,14 @@ class UserCreate(UserBase):
 
 class UserResponse(UserBase):
     id: int
+    is_active: bool
+
+
+class UserUpdate(BaseModel):
+    first_name: str | None = None
+    last_name: str | None = None
+    middle_name: str | None = None
+    email: EmailStr | None = None
 
 
 class UserLogin(BaseModel):
