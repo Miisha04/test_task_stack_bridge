@@ -16,6 +16,7 @@ class UserCreate(UserBase):
 class UserResponse(UserBase):
     id: int
     is_active: bool
+    role: str
 
 
 class UserUpdate(BaseModel):
